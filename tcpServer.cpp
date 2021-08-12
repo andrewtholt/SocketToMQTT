@@ -322,18 +322,25 @@ void *connection_handler(void *socket_desc) {
                 if( name != NULL && value != NULL) {
 
                     memset(sql,0,sizeof(sql));
-                    sprintf(sql,"SELECT topic from map where name='%s';",name);
+                    sprintf(sql,"SELECT cmdTopic from map where name='%s';",name);
                     printf("sql is:%s\n",sql);
                     int rc = sqlite3_prepare_v2( db, sql, -1, &res, NULL);
                     rc = sqlite3_step(res);
 
-                    char *topic=(char *)sqlite3_column_text(res, 0);
+                    char *cmdTopic=(char *)sqlite3_column_text(res, 0);
 
-                    printf("Publish topic %s value %s\n", topic, value);
+                    printf("Command topic %s\n", cmdTopic, value);
+                    sqlite3_finalize(res);
                     memset(sql,0,sizeof(sql));
                     sprintf(sql,  "update map set value='%s' where name='%s';",value,name);
                     printf("sql is >%s<\n", sql);
-                    sqlite3_finalize(res);
+
+                    char *err_msg = 0;
+
+                    sqlite3_exec(db,sql, 0,0, &err_msg);
+
+                    sqlite3_free(err_msg);
+
                 } else {
                     sprintf(out,"<ERROR>\n");
                 }

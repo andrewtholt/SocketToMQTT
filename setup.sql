@@ -14,13 +14,14 @@ create table map (
     -- Time To Live, in seconds
     -- 
     TTL int default 0 ,
+    dirty int default 0,
     logtime int
 );
 
 CREATE TRIGGER UpdateLastTime
 AFTER UPDATE ON map FOR EACH ROW
 BEGIN
-    UPDATE map SET logtime = CURRENT_TIMESTAMP WHERE rowid = new.rowid;
+    UPDATE map SET logtime = CURRENT_TIMESTAMP,  dirty=1 WHERE rowid = new.rowid;
 END ;
 
 insert into map ('name','cmdTopic') values ('start','/test/start/cmnd');
