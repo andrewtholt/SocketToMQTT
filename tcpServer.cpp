@@ -167,28 +167,34 @@ int main(int argc , char *argv[]) {
         puts("Connection accepted");
         bzero(buffer,sizeof(buffer));
 
-        len = recv(client_sock, buffer, sizeof(buffer), 0);
+        //        len = recv(client_sock, buffer, sizeof(buffer), 0);
 
-        tmp = strtok(buffer,"\r\n");
+        //        tmp = strtok(buffer,"\r\n");
 
-        cout << len << endl;
-        cout << ">" << tmp << "<" << endl;
+        //        cout << len << endl;
+        //        cout << ">" << tmp << "<" << endl;
 
-        if( tmp != NULL) {
-            if(!strcmp(tmp, (char *)"INPUT")) {
-                if( pthread_create( &thread_id , NULL ,  connection_handler , (void*) &client_sock) < 0) {
-                    perror("could not create thread");
-                    return 1;
-                }
-                // 
-                // Now join the thread , so that we dont terminate before the thread
-                // pthread_join( thread_id , NULL);
-                // 
-                puts("Handler assigned");
-            } else {
-                close(client_sock);
-            }
+
+        /*
+           if( tmp != NULL) {
+           if(!strcmp(tmp, (char *)"INPUT")) {
+           */
+
+        if( pthread_create( &thread_id , NULL ,  connection_handler , (void*) &client_sock) < 0) {
+            perror("could not create thread");
+            return 1;
         }
+        /*
+        // 
+        // Now join the thread , so that we dont terminate before the thread
+        // pthread_join( thread_id , NULL);
+        // 
+        puts("Handler assigned");
+        } else {
+        close(client_sock);
+        }
+        }
+        */
     }
 
     if (client_sock < 0) {
