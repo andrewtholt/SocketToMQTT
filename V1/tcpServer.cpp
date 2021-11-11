@@ -1,20 +1,20 @@
 /*
    C socket server example, handles multiple clients using threads
    Compile
-   gcc server.c -lpthread -o server
+   gcc tcpServer.c -lpthread -o tcpServer
    */
 
-#include<stdio.h>
-#include<string.h>    //strlen
-#include<stdlib.h>    //strlen
-#include<sys/socket.h>
-#include<arpa/inet.h> //inet_addr
-#include<unistd.h>    //write
-#include<pthread.h> //for threading , link with lpthread
+#include <stdio.h>
+#include <string.h>    //strlen
+#include <stdlib.h>    //strlen
+#include <sys/socket.h>
+#include <arpa/inet.h> //inet_addr
+#include <unistd.h>    //write
+#include <pthread.h> //for threading , link with lpthread
 #include <mutex> 
 #include <iostream>
 #include <sqlite3.h>
-#include <MQTTAsync.h>
+#include <mqttHelper.h>
 
 using namespace std;
 //
@@ -52,24 +52,29 @@ class threadCounter {
 
 threadCounter C;
 
-char *dbName = NULL;
+string dbName;
 
 void usage() {
 
     cout << "\nUsage: tcpServer -d <database> -m <MQTT Broker> -p <port> -v | -h" << endl;
-    cout << "\t-d <db>\tSqlite3 database file" << endl;
-    cout << "\t-m <mqtt>\tName or IP of MQTT broker" << endl;
-    cout << "\t-p <mqtt>\tPort used by MQTT broker" << endl;
-    cout << "\t-h\tHelp" << endl;
+    cout << "\t-d <db>\tSqlite3 database file." << endl;
+    cout << "\t-m <mqtt>\tName or IP of MQTT broker." << endl;
+    cout << "\t-p <mqtt>\tPort used by MQTT broker." << endl;
+    cout << "\t-h\tHelp." << endl;
+    cout << "\t-v\tVerbose." << endl;
 }
 
 int main(int argc , char *argv[]) {
     int socket_desc , client_sock , c;
     struct sockaddr_in server , client;
 
-    char *mqttServer = NULL;
+    //    char *mqttServer = NULL;
+    string mqttServer ;
     int mqttPort = 1833;
     bool verbose=false;
+
+    dbName = "../map.db";
+    mqttServer = "192.168.10.124";
 
     int f;
     while(( f=getopt(argc,argv,"d:hm:p:v")) != -1) {
@@ -92,7 +97,7 @@ int main(int argc , char *argv[]) {
                 break;
 
             case 'p':
-                mqttPort = atoi(optarg);
+                mqttPort = stoi(optarg);
                 if (verbose) {
                     cout << "MQTT Port:" << mqttPort << endl;
                 }
@@ -106,13 +111,13 @@ int main(int argc , char *argv[]) {
     }
 
     bool fail = true;
-    if(!dbName) {
+    if(dbName.empty()) {
         cerr << "Fatal error, no database specified" << endl;
     } else {
         fail = false;
     }
 
-    if(!mqttServer) {
+    if(mqttServer.empty() ) {
         cerr << "Fatal error, no MQTT server specified" << endl;
     } else {
         fail = false;
@@ -256,6 +261,18 @@ void *connection_handler(void *socket_desc) {
     int read_size;
     char *message , client_message[2000];
 
+    string clientName;
+
+    char data[32] ;    
+    memset(data,0,sizeof data);
+    mqttHelper *h = mqttHelper::Instance();
+
+    h->setClientID("DB_TEST");
+    h->setHost("192.168.10.124");
+    h->setUserDataPointer((void *)data);
+
+    bool mqttFail=h->connect2MQTT();
+
     //Send some messages to the client
     /*
        message = (char *)"Greetings! I am your connection handler\n";
@@ -278,7 +295,7 @@ void *connection_handler(void *socket_desc) {
 
     bool fail = true;
 
-    con = sqlite3_open_v2(dbName, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX, NULL);
+    con = sqlite3_open_v2(dbName.c_str(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX, NULL);
 
     if ( con != SQLITE_OK ) {
         cerr << "failed to open database "<< dbName << endl;
@@ -305,64 +322,80 @@ void *connection_handler(void *socket_desc) {
             char *cmd = (char *)strtok(client_message," \n\r");
 
             if( !strcmp(cmd, "GET")) {
-                char *name = (char *)strtok(NULL, " \n\r");
-                printf("%s\n",name);
 
-                sprintf(sql,"SELECT value from map where name='%s';",name);
+                if(!clientName.empty()) {
+                    char *name = (char *)strtok(NULL, " \n\r");
+                    printf("%s\n",name);
 
-                printf("sql is >%s<\n", sql);
+                    sprintf(sql,"SELECT value from map where name='%s';",name);
 
-                int rc = sqlite3_prepare_v2( db, sql, -1, &res, NULL);
-                rc = sqlite3_step(res);
+                    printf("sql is >%s<\n", sql);
 
-                char *tmp=(char *)sqlite3_column_text(res, 0);
+                    int rc = sqlite3_prepare_v2( db, sql, -1, &res, NULL);
+                    rc = sqlite3_step(res);
 
-                sprintf(out,"%s\n",tmp);
-                printf("result=%s\n",tmp);
-                write(sock , out , strlen(out));
-                sqlite3_finalize(res);
+                    char *tmp=(char *)sqlite3_column_text(res, 0);
+
+                    sprintf(out,"%s\n",tmp);
+                    printf("result=%s\n",tmp);
+                    write(sock , out , strlen(out));
+                    sqlite3_finalize(res);
+                } else {
+                    sprintf(out,"-NONAME\n");
+                    write(sock , out , strlen(out));
+                }
+
             } else if(!strcmp(cmd,"SET")) {
                 char *name = (char *)strtok(NULL, " \n\r");
                 char *value = (char *)strtok(NULL, " \n\r");
 
                 if( name != NULL && value != NULL) {
 
-                    memset(sql,0,sizeof(sql));
-                    sprintf(sql,"SELECT cmdTopic from map where name='%s';",name);
-                    printf("sql is:%s\n",sql);
-                    int rc = sqlite3_prepare_v2( db, sql, -1, &res, NULL);
-                    rc = sqlite3_step(res);
+                    if(!clientName.empty()) {
+                        memset(sql,0,sizeof(sql));
+                        sprintf(sql,"SELECT cmdTopic from map where name='%s' and client_name='%s';",name,clientName.c_str());
+                        printf("sql is:%s\n",sql);
+                        int rc = sqlite3_prepare_v2( db, sql, -1, &res, NULL);
+                        rc = sqlite3_step(res);
 
-                    char *cmdTopic=(char *)sqlite3_column_text(res, 0);
+                        char *cmdTopic=(char *)sqlite3_column_text(res, 0);
 
-                    printf("Command topic %s\n", cmdTopic, value);
-                    sqlite3_finalize(res);
-                    memset(sql,0,sizeof(sql));
-                    sprintf(sql,  "update map set value='%s' where name='%s';",value,name);
-                    printf("sql is >%s<\n", sql);
+                        printf("Command topic %s %s\n", cmdTopic, value);
+                        sqlite3_finalize(res);
+                        memset(sql,0,sizeof(sql));
+                        sprintf(sql,  "update map set value='%s' where name='%s';",value,name);
+                        printf("sql is >%s<\n", sql);
 
-                    char *err_msg = 0;
+                        char *err_msg = 0;
 
-                    sqlite3_exec(db,sql, 0,0, &err_msg);
+                        sqlite3_exec(db,sql, 0,0, &err_msg);
 
-                    sqlite3_free(err_msg);
-
-                } else {
-                    sprintf(out,"<ERROR>\n");
+                        sqlite3_free(err_msg);
+                    } else {
+                        sprintf(out,"-NONAME\n");
+                        write(sock , out , strlen(out));
+                    }
                 }
-            }
+            } else if(!strcmp(cmd,"ID")) {
 
-            // client_message[read_size] = '\0';
-            //        fgets(buffer, 80,stdin);
-            //
-            // Send the message back to client
-            //
-            //        write(sock , buffer , strlen(buffer));
-            //
-            // clear the message buffer
-            //
-            memset(client_message, 0, 2000);
+                if( clientName.empty()) {
+                    char *tmp = (char *)strtok(NULL, " \n\r");
+                    clientName = tmp;
+                } 
+
+            }
         }
+
+        // client_message[read_size] = '\0';
+        //        fgets(buffer, 80,stdin);
+        //
+        // Send the message back to client
+        //
+        //        write(sock , buffer , strlen(buffer));
+        //
+        // clear the message buffer
+        //
+        memset(client_message, 0, 2000);
     }
 
     if(read_size == 0) {
