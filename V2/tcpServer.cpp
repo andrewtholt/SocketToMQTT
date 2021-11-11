@@ -11,12 +11,22 @@
 #include <arpa/inet.h> //inet_addr
 #include <unistd.h>    //write
 #include <pthread.h> //for threading , link with lpthread
-#include <mutex> 
+#include <mutex>
 #include <iostream>
 #include <sqlite3.h>
 #include <mqttHelper.h>
 
 using namespace std;
+
+using namespace std;
+
+void mine(struct mosquitto *mosq, void *obj, const struct mosquitto_message *msg) {
+    cout << "Hello from msg callback " << endl;
+
+    cout << "Topic:" << msg->topic << endl;
+    cout << "Msg  :" << (char *)msg->payload << endl;
+    cout << "=====" << endl;
+}
 //
 // The thread function
 //
@@ -29,12 +39,12 @@ class threadCounter {
         int threadCount=0;
     public:
 
-        void incCount() { 
+        void incCount() {
             std::lock_guard<std::mutex> lck (mtx);
             threadCount++;
         }
 
-        void decCount() { 
+        void decCount() {
             std::lock_guard<std::mutex> lck (mtx);
             threadCount--;
 
@@ -44,7 +54,7 @@ class threadCounter {
             }
         }
 
-        int getCount() { 
+        int getCount() {
             std::lock_guard<std::mutex> lck (mtx);
             return(threadCount);
         }
@@ -151,16 +161,16 @@ int main(int argc , char *argv[]) {
         return 1;
     }
     puts("bind done");
-    // 
+    //
     // Listen
-    // 
+    //
     listen(socket_desc , 3);
-    // 
+    //
     // Accept and incoming connection
-    // 
+    //
     puts("Waiting for incoming connections...");
     c = sizeof(struct sockaddr_in);
-    // 
+    //
     puts("Waiting for incoming connections...");
     c = sizeof(struct sockaddr_in);
     pthread_t thread_id;
@@ -190,10 +200,10 @@ int main(int argc , char *argv[]) {
             return 1;
         }
         /*
-        // 
+        //
         // Now join the thread , so that we dont terminate before the thread
         // pthread_join( thread_id , NULL);
-        // 
+        //
         puts("Handler assigned");
         } else {
         close(client_sock);
@@ -254,7 +264,7 @@ void dump(void *ptr, int len ) {
  * This will handle connection for each client
  */
 void *connection_handler(void *socket_desc) {
-    // 
+    //
     // Get the socket descriptor
     //
     int sock = *(int*)socket_desc;
@@ -263,7 +273,7 @@ void *connection_handler(void *socket_desc) {
 
     string clientName;
 
-    char data[32] ;    
+    char data[32] ;
     memset(data,0,sizeof data);
     mqttHelper *h = mqttHelper::Instance();
 
@@ -273,17 +283,8 @@ void *connection_handler(void *socket_desc) {
 
     bool mqttFail=h->connect2MQTT();
 
-    //Send some messages to the client
-    /*
-       message = (char *)"Greetings! I am your connection handler\n";
-       write(sock , message , strlen(message));
+    h->setMsgCallback((void*)mine);
 
-       message = (char *)"Now type something and i shall repeat what you type \n";
-       write(sock , message , strlen(message));
-       */
-    //
-    // Receive a message from client
-    //
     char buffer[80];
     int count=0;
     int len=80;
@@ -324,6 +325,9 @@ void *connection_handler(void *socket_desc) {
             if( !strcmp(cmd, "GET")) {
 
                 if(!clientName.empty()) {
+                    // CHANGE:
+                    // Get from MySQL comman database.
+                    //
                     char *name = (char *)strtok(NULL, " \n\r");
                     printf("%s\n",name);
 
@@ -345,6 +349,12 @@ void *connection_handler(void *socket_desc) {
                     write(sock , out , strlen(out));
                 }
 
+            } else if(!strcmp(cmd,"SUB")) {
+                // PUB <name>
+                // Get topic(s) from comman database
+                //
+                if(!clientName.empty()) {
+                }
             } else if(!strcmp(cmd,"SET")) {
                 char *name = (char *)strtok(NULL, " \n\r");
                 char *value = (char *)strtok(NULL, " \n\r");
@@ -381,7 +391,7 @@ void *connection_handler(void *socket_desc) {
                 if( clientName.empty()) {
                     char *tmp = (char *)strtok(NULL, " \n\r");
                     clientName = tmp;
-                } 
+                }
 
             }
         }
@@ -414,5 +424,5 @@ void *connection_handler(void *socket_desc) {
     close(sock);
 
     return 0;
-} 
+}
 
